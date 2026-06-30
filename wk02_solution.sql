@@ -1,0 +1,46 @@
+-- ============================================================
+-- PD2023 Week 2: IBAN Construction (with data quality checks)
+-- ============================================================
+
+-- 1. Check for transactions that won't join to SWIFT lookup (unmatched banks)
+SELECT 'UNMATCHED_BANK' AS check_name, t.*
+FROM TIL_PLAYGROUND.PREPPIN_DATA_INPUTS.PD2023_WK02_TRANSACTIONS t
+LEFT JOIN TIL_PLAYGROUND.PREPPIN_DATA_INPUTS.PD2023_WK02_SWIFT_CODES s
+    ON t.BANK = s.BANK
+WHERE s.BANK IS NULL;
+
+-- 2. Check sort codes are valid (6 digits after removing dashes)
+SELECT 'INVALID_SORT_CODE' AS check_name, TRANSACTION_ID, SORT_CODE
+FROM TIL_PLAYGROUND.PREPPIN_DATA_INPUTS.PD2023_WK02_TRANSACTIONS
+WHERE LENGTH(REPLACE(SORT_CODE, '-', '')) != 6
+   OR REPLACE(SORT_CODE, '-', '') NOT RLIKE '^[0-9]{6}$';
+
+-- 3. Check account numbers are valid (8 digits, not null)
+SELECT 'INVALID_ACCOUNT_NUMBER' AS check_name, TRANSACTION_ID, ACCOUNT_NUMBER
+FROM TIL_PLAYGROUND.PREPPIN_DATA_INPUTS.PD2023_WK02_TRANSACTIONS
+WHERE ACCOUNT_NUMBER IS NULL
+   OR LENGTH(TO_VARCHAR(ACCOUNT_NUMBER)) != 8
+   OR TO_VARCHAR(ACCOUNT_NUMBER) NOT RLIKE '^[0-9]{8}$';
+
+-- 4. Check SWIFT codes are 4 chars and check digits are 2 chars
+SELECT 'INVALID_SWIFT_LOOKUP' AS check_name, *
+FROM TIL_PLAYGROUND.PREPPIN_DATA_INPUTS.PD2023_WK02_SWIFT_CODES
+WHERE LENGTH(SWIFT_CODE) != 4
+   OR LENGTH(CHECK_DIGITS) != 2;
+
+-- 5. Final output (only rows passing all checks)
+SELECT
+    t.TRANSACTION_ID,
+    'GB'
+        || s.CHECK_DIGITS
+        || s.SWIFT_CODE
+        || REPLACE(t.SORT_CODE, '-', '')
+        || TO_VARCHAR(t.ACCOUNT_NUMBER) AS IBAN
+FROM TIL_PLAYGROUND.PREPPIN_DATA_INPUTS.PD2023_WK02_TRANSACTIONS t
+JOIN TIL_PLAYGROUND.PREPPIN_DATA_INPUTS.PD2023_WK02_SWIFT_CODES s
+    ON t.BANK = s.BANK
+WHERE REPLACE(t.SORT_CODE, '-', '') RLIKE '^[0-9]{6}$'
+  AND t.ACCOUNT_NUMBER IS NOT NULL
+  AND LENGTH(TO_VARCHAR(t.ACCOUNT_NUMBER)) = 8
+  AND LENGTH(s.SWIFT_CODE) = 4
+  AND LENGTH(s.CHECK_DIGITS) = 2;
